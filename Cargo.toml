@@ -1,5 +1,5 @@
 [package]
-name = "enwiki-20220101-pages-articles-multistream"
+name = "Fast XML wikipedia parser"
 version = "0.1.0"
 edition = "2021"
 
