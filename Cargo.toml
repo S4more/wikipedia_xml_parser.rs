@@ -1,5 +1,5 @@
 [package]
-name = "Fast XML wikipedia parser"
+name = "Fast_xml_wikipedia_parser"
 version = "0.1.0"
 edition = "2021"
 
