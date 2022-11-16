@@ -9,7 +9,7 @@ use quick_xml::reader::Reader;
 use quick_xml::Error;
 use regex::Regex;
 
-static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[\[[^\[\]]+]]").unwrap());
+static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
 
 static NAME_EXCLUDER: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\(disambiguation\)|File:|.+:.+").unwrap());
@@ -109,7 +109,9 @@ impl PageParser {
                         let iter = TAG_MATCHER.find_iter(core::str::from_utf8(&text).unwrap_or(""));
 
                         for matches in iter {
-                            tags.push(matches.as_str().to_string());
+                            let tag = matches.as_str();
+                            if NAME_EXCLUDER.is_match(tag) { continue; }
+                            tags.push(tag[2..tag.len() - 1].to_string());
                         }
                     }
                     Ok(Event::Eof) => {
@@ -122,6 +124,7 @@ impl PageParser {
 
             let page = Page::new(name, tags);
             println!("Page: {:} {:}", page.tags.len(), page.name);
+            println!("{:?}", page.tags);
             pages.push(page);
         }
 
