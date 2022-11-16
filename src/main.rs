@@ -1,13 +1,17 @@
 use std::fs::File;
 
-use std::io::BufReader;
+use std::io::{BufReader, Write};
 use std::{env::args, time::Instant};
+use std::mem::{size_of_val, size_of};
 
 use once_cell::sync::Lazy;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use quick_xml::Error;
 use regex::Regex;
+
+use serde::{Deserialize, Serialize};
+
 
 static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
 
@@ -29,9 +33,12 @@ fn get_given_file_reader() -> Option<BufReader<File>> {
 struct PageParser {
     buf: Vec<u8>,
     reader: Reader<BufReader<File>>,
+    write_size_interval: u64,
+    file_index: u64,
     _done: bool,
 }
 
+#[derive(Serialize, Deserialize)]
 #[derive(Debug)]
 pub struct Page {
     name: String,
@@ -45,11 +52,13 @@ impl Page {
 }
 
 impl PageParser {
-    pub fn new(reader: Reader<BufReader<File>>) -> Self {
+    pub fn new(reader: Reader<BufReader<File>>, write_size_interval: u64) -> Self {
         Self {
             buf: vec![],
             reader,
             _done: false,
+            write_size_interval,
+            file_index: 0,
         }
     }
 
@@ -123,9 +132,18 @@ impl PageParser {
             }
 
             let page = Page::new(name, tags);
-            println!("Page: {:} {:}", page.tags.len(), page.name);
-            println!("{:?}", page.tags);
+            // println!("Page: {:} {:}", page.tags.len(), page.name);
             pages.push(page);
+            
+            if pages.len() % 25000 == 0 {
+                let mut file = File::create(format!("parsed{}.json", self.file_index)).unwrap();
+                self.file_index += 1;
+                let json_string = serde_json::to_string(&pages).unwrap();
+                println!("Started writing.");
+                file.write(json_string.as_bytes()).unwrap();
+                println!("Wrote first batch.");
+                pages.clear();
+            }
         }
 
         return pages;
@@ -167,19 +185,44 @@ impl PageParser {
     }
 }
 
+// Somewhat off...
+fn calculate_size(pages: &Vec<Page>) -> u64 {
+    let mut total_size: u64 = 0;
+    for page in pages.iter() {
+        // 24 bytes is the size of a string in rust
+        for tag in &page.tags {
+            total_size += tag.len() as u64;
+            // + 1 for each comma separated thing and + 2 for each quote
+            total_size += "\"\",".len() as u64;
+        }
+        total_size += "\"tags\"".len() as u64;
+        total_size += "\"name\": ".len() as u64;
+        total_size += "[{}],".len() as u64
+    }
+
+    total_size
+}
+
 fn main() {
     let start = Instant::now();
     let reader = get_given_file_reader().expect("Failed to get file");
 
     let parser = Reader::from_reader(reader);
-    let mut parser = PageParser::new(parser);
+    let mut parser = PageParser::new(parser, 20);
 
     let parsed = parser.parse();
+    println!("calculated size: {} mb", calculate_size(&parsed) / 1_048_576);
     println!("{}", parsed.len());
 
-    for page in parsed {
-        println!("Page: {:} {:}", page.tags.len(), page.name);
-    }
+    println!("Started serializing...");
+    let mut file = File::create("parsed.json").unwrap();
+    let json_string = serde_json::to_string(&parsed).unwrap();
+    println!("Started writing...");
+    file.write(json_string.as_bytes()).unwrap();
+
+    // for page in parsed {
+    //     println!("Page: {:} {:}", page.tags.len(), page.name);
+    // }
 
     // consume_parser(parser);
 
