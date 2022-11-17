@@ -1,3 +1,6 @@
 /target
 *.txt
 *.bz2
+parsed_all.json
+parsed.zip
+parsed/*

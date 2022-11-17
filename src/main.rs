@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::fs::File;
 
 use std::io::{BufReader, Write};
+use std::mem::{size_of, size_of_val};
 use std::{env::args, time::Instant};
-use std::mem::{size_of_val, size_of};
 
 use once_cell::sync::Lazy;
 use quick_xml::events::Event;
@@ -10,8 +11,9 @@ use quick_xml::reader::Reader;
 use quick_xml::Error;
 use regex::Regex;
 
-use serde::{Deserialize, Serialize};
+use load_file;
 
+use serde::{Deserialize, Serialize};
 
 static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
 
@@ -38,8 +40,7 @@ struct PageParser {
     _done: bool,
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Page {
     name: String,
     tags: Vec<String>,
@@ -119,7 +120,9 @@ impl PageParser {
 
                         for matches in iter {
                             let tag = matches.as_str();
-                            if NAME_EXCLUDER.is_match(tag) { continue; }
+                            if NAME_EXCLUDER.is_match(tag) {
+                                continue;
+                            }
                             tags.push(tag[2..tag.len() - 1].to_string());
                         }
                     }
@@ -134,14 +137,15 @@ impl PageParser {
             let page = Page::new(name, tags);
             // println!("Page: {:} {:}", page.tags.len(), page.name);
             pages.push(page);
-            
+
             if pages.len() % 25000 == 0 {
-                let mut file = File::create(format!("parsed{}.json", self.file_index)).unwrap();
+                let mut file =
+                    File::create(format!("parsed/parsed{}.json", self.file_index)).unwrap();
                 self.file_index += 1;
                 let json_string = serde_json::to_string(&pages).unwrap();
                 println!("Started writing.");
                 file.write(json_string.as_bytes()).unwrap();
-                println!("Wrote first batch.");
+                println!("Wrote {} pages", self.file_index * 25000);
                 pages.clear();
             }
         }
@@ -203,29 +207,55 @@ fn calculate_size(pages: &Vec<Page>) -> u64 {
     total_size
 }
 
-fn main() {
-    let start = Instant::now();
-    let reader = get_given_file_reader().expect("Failed to get file");
+fn generate_count_files() {
+    let mut map: HashMap<String, u64> = HashMap::new();
+    for i in 0..253 {
+        println!("File:{i}");
+        let bytes = load_file::load_bytes!(format!("../parsed/parsed{i}.json").as_str());
+        let data: Vec<Page> = serde_json::from_slice(bytes).unwrap();
 
-    let parser = Reader::from_reader(reader);
-    let mut parser = PageParser::new(parser, 20);
-
-    let parsed = parser.parse();
-    println!("calculated size: {} mb", calculate_size(&parsed) / 1_048_576);
-    println!("{}", parsed.len());
-
-    println!("Started serializing...");
-    let mut file = File::create("parsed.json").unwrap();
-    let json_string = serde_json::to_string(&parsed).unwrap();
+        for page in data {
+            for link in &page.tags {
+                map.insert(link.to_string(), map.get(link).unwrap_or(&0) + 1);
+            }
+        }
+    }
+    let mut file = File::create("parsed_all.json").unwrap();
+    let json_string = serde_json::to_string(&map).unwrap();
     println!("Started writing...");
     file.write(json_string.as_bytes()).unwrap();
+}
 
-    // for page in parsed {
-    //     println!("Page: {:} {:}", page.tags.len(), page.name);
-    // }
+fn main() {
+    generate_count_files();
 
-    // consume_parser(parser);
+    return;
 
-    let duration = start.elapsed();
-    println!("Took : {duration:?}");
+    // let start = Instant::now();
+    // let reader = get_given_file_reader().expect("Failed to get file");
+
+    // let parser = Reader::from_reader(reader);
+    // let mut parser = PageParser::new(parser, 20);
+
+    // let parsed = parser.parse();
+    // println!(
+    //     "calculated size: {} mb",
+    //     calculate_size(&parsed) / 1_048_576
+    // );
+    // println!("{}", parsed.len());
+
+    // println!("Started serializing...");
+    // let mut file = File::create("parsed/parsed.json").unwrap();
+    // let json_string = serde_json::to_string(&parsed).unwrap();
+    // println!("Started writing...");
+    // file.write(json_string.as_bytes()).unwrap();
+
+    // // for page in parsed {
+    // //     println!("Page: {:} {:}", page.tags.len(), page.name);
+    // // }
+
+    // // consume_parser(parser);
+
+    // let duration = start.elapsed();
+    // println!("Took : {duration:?}");
 }
