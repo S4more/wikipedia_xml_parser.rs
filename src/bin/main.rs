@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-
 use std::io::{BufReader, Write};
-use std::mem::{size_of, size_of_val};
 use std::{env::args, time::Instant};
 
 use once_cell::sync::Lazy;
@@ -11,9 +9,9 @@ use quick_xml::reader::Reader;
 use quick_xml::Error;
 use regex::Regex;
 
-use load_file;
+use wiki_xml::page::Page;
 
-use serde::{Deserialize, Serialize};
+use load_file;
 
 static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
 
@@ -38,18 +36,6 @@ struct PageParser {
     write_size_interval: u64,
     file_index: u64,
     _done: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Page {
-    name: String,
-    tags: Vec<String>,
-}
-
-impl Page {
-    pub fn new(name: String, tags: Vec<String>) -> Self {
-        Self { name, tags }
-    }
 }
 
 impl PageParser {
