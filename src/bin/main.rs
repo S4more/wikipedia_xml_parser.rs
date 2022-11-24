@@ -12,6 +12,7 @@ use regex::Regex;
 use wiki_xml::page::Page;
 
 use load_file;
+use wiki_xml::page_parser::PageParser;
 
 static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
 
@@ -28,151 +29,6 @@ fn get_given_file_reader() -> Option<BufReader<File>> {
         }
     }
     None
-}
-
-struct PageParser {
-    buf: Vec<u8>,
-    reader: Reader<BufReader<File>>,
-    write_size_interval: u64,
-    file_index: u64,
-    _done: bool,
-}
-
-impl PageParser {
-    pub fn new(reader: Reader<BufReader<File>>, write_size_interval: u64) -> Self {
-        Self {
-            buf: vec![],
-            reader,
-            _done: false,
-            write_size_interval,
-            file_index: 0,
-        }
-    }
-
-    pub fn next(&mut self) -> Result<Event, Error> {
-        if self.buf.len() > 8096 {
-            self.clear_buffer();
-        }
-        self.reader.read_event_into(&mut self.buf)
-    }
-
-    pub fn clear_buffer(&mut self) {
-        self.buf.clear();
-    }
-
-    pub fn done(&mut self) {
-        self._done = true;
-    }
-
-    pub fn parse(&mut self) -> Vec<Page> {
-        let mut pages: Vec<Page> = vec![];
-
-        'outer: while !self._done {
-            self.to_next("title");
-
-            let name: String = match self.next() {
-                Ok(Event::Text(text)) => core::str::from_utf8(&text).unwrap_or("").to_string(),
-                _ => "".to_string(),
-            };
-
-            // Remove disambiguation articles
-            if NAME_EXCLUDER.is_match(name.as_str()) {
-                continue;
-            }
-
-            // println!("title: {name}");
-            let mut tags: Vec<String> = vec![];
-            loop {
-                if self._done {
-                    break;
-                };
-                match self.next() {
-                    Ok(Event::End(tag)) => {
-                        if core::str::from_utf8(tag.name().0).unwrap() == "page" {
-                            break;
-                        }
-                    }
-                    Ok(Event::Empty(tag)) => {
-                        // Remove redirects from the list
-                        if core::str::from_utf8(tag.local_name().into_inner())
-                            .unwrap()
-                            .contains("redirect")
-                        {
-                            continue 'outer;
-                        }
-                    }
-                    Ok(Event::Text(text)) => {
-                        let iter = TAG_MATCHER.find_iter(core::str::from_utf8(&text).unwrap_or(""));
-
-                        for matches in iter {
-                            let tag = matches.as_str();
-                            if NAME_EXCLUDER.is_match(tag) {
-                                continue;
-                            }
-                            tags.push(tag[2..tag.len() - 1].to_string());
-                        }
-                    }
-                    Ok(Event::Eof) => {
-                        println!("EOF Done");
-                        self.done()
-                    }
-                    _ => {}
-                }
-            }
-
-            let page = Page::new(name, tags);
-            // println!("Page: {:} {:}", page.tags.len(), page.name);
-            pages.push(page);
-
-            if pages.len() % 25000 == 0 {
-                let mut file =
-                    File::create(format!("parsed/parsed{}.json", self.file_index)).unwrap();
-                self.file_index += 1;
-                let json_string = serde_json::to_string(&pages).unwrap();
-                println!("Started writing.");
-                file.write(json_string.as_bytes()).unwrap();
-                println!("Wrote {} pages", self.file_index * 25000);
-                pages.clear();
-            }
-        }
-
-        return pages;
-    }
-
-    pub fn to_next(&mut self, name: &str) {
-        loop {
-            if self._done {
-                return;
-            };
-
-            match self.reader.read_event_into(&mut self.buf) {
-                Ok(Event::Start(tag)) => {
-                    if core::str::from_utf8(tag.name().0).unwrap_or("") == name {
-                        return;
-                    }
-                }
-                Ok(Event::Eof) => self.done(),
-                _ => {}
-            }
-        }
-    }
-
-    pub fn to_end(&mut self, name: &str, cb: impl Fn(Result<Event, quick_xml::Error>) -> ()) {
-        loop {
-            if self._done {
-                return;
-            };
-            match self.reader.read_event_into(&mut self.buf) {
-                Ok(Event::End(tag)) => {
-                    if core::str::from_utf8(tag.name().0).unwrap_or("") == name {
-                        break;
-                    }
-                }
-                Ok(Event::Eof) => self.done(),
-                e => cb(e),
-            }
-        }
-    }
 }
 
 // Somewhat off...
@@ -217,31 +73,32 @@ fn main() {
 
     return;
 
-    // let start = Instant::now();
-    // let reader = get_given_file_reader().expect("Failed to get file");
+    let start = Instant::now();
+    let reader = get_given_file_reader().expect("Failed to get file");
 
-    // let parser = Reader::from_reader(reader);
-    // let mut parser = PageParser::new(parser, 20);
+    let parser = Reader::from_reader(reader);
+    let mut parser = PageParser::new(parser, 20);
 
-    // let parsed = parser.parse();
-    // println!(
-    //     "calculated size: {} mb",
-    //     calculate_size(&parsed) / 1_048_576
-    // );
-    // println!("{}", parsed.len());
+    let parsed = parser.parse();
 
-    // println!("Started serializing...");
-    // let mut file = File::create("parsed/parsed.json").unwrap();
-    // let json_string = serde_json::to_string(&parsed).unwrap();
-    // println!("Started writing...");
-    // file.write(json_string.as_bytes()).unwrap();
+    println!(
+        "calculated size: {} mb",
+        calculate_size(&parsed) / 1_048_576
+    );
+    println!("{}", parsed.len());
 
-    // // for page in parsed {
-    // //     println!("Page: {:} {:}", page.tags.len(), page.name);
-    // // }
+    println!("Started serializing...");
+    let mut file = File::create("parsed/parsed.json").unwrap();
+    let json_string = serde_json::to_string(&parsed).unwrap();
+    println!("Started writing...");
+    file.write(json_string.as_bytes()).unwrap();
 
-    // // consume_parser(parser);
+    for page in parsed {
+        println!("Page: {:} {:}", page.tags.len(), page.name);
+    }
 
-    // let duration = start.elapsed();
-    // println!("Took : {duration:?}");
+    // consume_parser(parser);
+
+    let duration = start.elapsed();
+    println!("Took : {duration:?}");
 }
