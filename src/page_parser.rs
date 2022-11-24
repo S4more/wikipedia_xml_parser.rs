@@ -30,7 +30,7 @@ impl PageParser {
         }
     }
 
-    pub fn next(&mut self) -> Result<Event, Error> {
+    pub fn next_event(&mut self) -> Result<Event, Error> {
         if self.buf.len() > 8096 {
             self.clear_buffer();
         }
@@ -51,7 +51,7 @@ impl PageParser {
         'outer: while !self._done {
             self.to_next("title");
 
-            let name: String = match self.next() {
+            let name: String = match self.next_event() {
                 Ok(Event::Text(text)) => core::str::from_utf8(&text).unwrap_or("").to_string(),
                 _ => "".to_string(),
             };
@@ -67,7 +67,7 @@ impl PageParser {
                 if self._done {
                     break;
                 };
-                match self.next() {
+                match self.next_event() {
                     Ok(Event::End(tag)) => {
                         if core::str::from_utf8(tag.name().0).unwrap() == "page" {
                             break;
@@ -164,7 +164,7 @@ impl Iterator for PageParser {
         }
 
         self.to_next("title");
-        let mut name: String = match self.next() {
+        let mut name: String = match self.next_event() {
             Ok(Event::Text(text)) => core::str::from_utf8(&text).unwrap_or("").to_string(),
             _ => "".to_string(),
         };
@@ -172,7 +172,7 @@ impl Iterator for PageParser {
         // Remove disambiguation articles
         while NAME_EXCLUDER.is_match(name.as_str()) {
             self.to_next("title");
-            name = match self.next() {
+            name = match self.next_event() {
                 Ok(Event::Text(text)) => core::str::from_utf8(&text).unwrap_or("").to_string(),
                 _ => "".to_string(),
             };
@@ -184,7 +184,7 @@ impl Iterator for PageParser {
             if self._done {
                 break;
             };
-            match self.next() {
+            match self.next_event() {
                 Ok(Event::End(tag)) => {
                     if core::str::from_utf8(tag.name().0).unwrap() == "page" {
                         break;
@@ -196,7 +196,7 @@ impl Iterator for PageParser {
                         .unwrap()
                         .contains("redirect")
                     {
-                        break;
+                        return self.next();
                     }
                 }
                 Ok(Event::Text(text)) => {
