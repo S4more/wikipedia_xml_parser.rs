@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
 use crate::page_id::{get_id_to_page, get_page_links, get_page_to_id_hashmap};
@@ -48,12 +49,20 @@ impl Jason {
             return Some(vec![from, to]);
         } else {
             for i in 0..ttl {
-                for &connection in connections {
-                    if let Some(path) = self.find_path(connection, to, i) {
-                        let mut v = vec![from];
-                        v.append(&mut path.clone());
-                        return Some(v);
-                    }
+                if let Some(res) = connections
+                    .par_iter()
+                    .map(|conn| {
+                        if let Some(path) = self.find_path(*conn, to, i) {
+                            let mut v = vec![from];
+                            v.append(&mut path.clone());
+                            return Some(v);
+                        }
+                        None
+                    })
+                    .find_any(|thing| matches!(thing, Some(_)))
+                    .unwrap_or(None)
+                {
+                    return Some(res);
                 }
             }
         }
