@@ -15,8 +15,8 @@ fn main() {
     let mut max_elapsed: Duration = Duration::from_micros(0);
     let mut max_path: Option<Vec<usize>> = None;
 
-    for i in 0..100 {
-        for j in 0..100 {
+    for i in 1000..1100 {
+        for j in 1000..1100 {
             if i == j {
                 continue;
             }
@@ -25,7 +25,8 @@ fn main() {
             let from = i;
             let to = j;
 
-            let path = jason.find_path(from, to, 7);
+            println!("starting");
+            let path = jason.find_path_root(from, to, 7);
 
             let duration = start.elapsed();
             total_elapsed = total_elapsed.add(duration);
@@ -34,11 +35,12 @@ fn main() {
             }
             max_elapsed = Duration::max(max_elapsed, duration);
             if let Some(path) = path {
-                let path: Vec<&String> = path.iter().map(|id| jason.get_name(*id)).collect();
-                println!("Path: {:?}", path);
-                println!("Took : {duration:?}");
+                let path: Vec<(usize, &String)> =
+                    path.iter().map(|id| (*id, jason.get_name(*id))).collect();
+                println!("Took : {duration:?} for Path: {path:?}");
             } else {
                 if jason.get_links(from).len() == 0 {
+                    println!("No Outbound Links")
                 } else {
                     println!(
                         "Failed to find path: {} -> {}",
@@ -52,7 +54,10 @@ fn main() {
 
     let duration = root_start.elapsed();
     if let Some(max_path) = max_path {
-        let max_path: Vec<&String> = max_path.iter().map(|id| jason.get_name(*id)).collect();
+        let max_path: Vec<(&usize, &String)> = max_path
+            .iter()
+            .map(|id| (id, jason.get_name(*id)))
+            .collect();
         println!("{max_path:?}");
     }
 

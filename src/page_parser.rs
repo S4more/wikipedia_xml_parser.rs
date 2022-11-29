@@ -1,4 +1,7 @@
-use std::{fs::File, io::BufReader};
+use std::{
+    fs::File,
+    io::{BufReader, Write},
+};
 
 use once_cell::sync::Lazy;
 use quick_xml::{events::Event, Error, Reader};
@@ -14,18 +17,16 @@ static NAME_EXCLUDER: Lazy<Regex> =
 pub struct PageParser {
     buf: Vec<u8>,
     reader: Reader<BufReader<File>>,
-    write_size_interval: u64,
     file_index: u64,
     _done: bool,
 }
 
 impl PageParser {
-    pub fn new(reader: Reader<BufReader<File>>, write_size_interval: u64) -> Self {
+    pub fn new(reader: Reader<BufReader<File>>) -> Self {
         Self {
             buf: vec![],
             reader,
             _done: false,
-            write_size_interval,
             file_index: 0,
         }
     }
@@ -83,10 +84,14 @@ impl PageParser {
                         }
                     }
                     Ok(Event::Text(text)) => {
-                        let iter = TAG_MATCHER.find_iter(core::str::from_utf8(&text).unwrap_or(""));
+                        let text = core::str::from_utf8(&text).unwrap_or("");
+                        let iter = TAG_MATCHER.find_iter(text);
 
                         for matches in iter {
                             let tag = matches.as_str();
+                            if tag.starts_with("Category:") || tag.starts_with("File:") {
+                                continue;
+                            }
                             if NAME_EXCLUDER.is_match(tag) {
                                 continue;
                             }
@@ -111,7 +116,7 @@ impl PageParser {
                 self.file_index += 1;
                 let json_string = serde_json::to_string(&pages).unwrap();
                 println!("Started writing.");
-                // file.write(json_string.as_bytes()).unwrap();
+                file.write(json_string.as_bytes()).unwrap();
                 println!("Wrote {} pages", self.file_index * 25000);
                 pages.clear();
             }
@@ -191,20 +196,31 @@ impl Iterator for PageParser {
                     }
                 }
                 Ok(Event::Empty(tag)) => {
+                    let tag_text = core::str::from_utf8(tag.local_name().into_inner()).unwrap();
+
                     // Remove redirects from the list
-                    if core::str::from_utf8(tag.local_name().into_inner())
-                        .unwrap()
-                        .contains("redirect")
-                    {
+                    if tag_text.contains("redirect") {
+                        if let Some(Ok(attr)) = tag.attributes().next() {
+                            return Some(Page::redirect(
+                                name,
+                                String::from_utf8(attr.value.to_vec())
+                                    .unwrap_or("ERROR".to_owned()),
+                            ));
+                        }
+                        println!("Failed to get redirect, {tag_text}");
                         return self.next();
                     }
                 }
                 Ok(Event::Text(text)) => {
-                    let iter = TAG_MATCHER.find_iter(core::str::from_utf8(&text).unwrap_or(""));
-
+                    let text = core::str::from_utf8(&text).unwrap_or("");
+                    let iter = TAG_MATCHER.find_iter(text);
                     for matches in iter {
                         let tag = matches.as_str();
-                        if NAME_EXCLUDER.is_match(tag) {
+
+                        if tag.contains("Category:")
+                            || tag.contains("File:")
+                            || tag.contains("(disambiguation)")
+                        {
                             continue;
                         }
                         tags.push(tag[2..tag.len() - 1].to_string());

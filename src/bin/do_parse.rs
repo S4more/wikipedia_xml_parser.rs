@@ -1,11 +1,51 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
+use std::{env::args, fs::File, io::BufReader};
 
-static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
+use quick_xml::reader::Reader;
+use rayon::prelude::*;
+use wiki_xml::{page::Page, page_parser::PageParser};
 
-static NAME_EXCLUDER: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\(disambiguation\)|File:|.+:.+").unwrap());
+fn get_given_file_reader() -> Option<BufReader<File>> {
+    let arg: Vec<String> = args().collect();
+    if let Some(path) = arg.get(1) {
+        if let Ok(file) = File::open(path) {
+            return Some(BufReader::with_capacity(8096, file));
+        }
+    }
+    None
+}
 
-fn parse_into_pages() {}
+pub fn main() {
+    let reader = get_given_file_reader().unwrap();
+    let parser = PageParser::new(Reader::from_reader(reader));
 
-pub fn main() {}
+    let mut redirects: Vec<Page> = vec![];
+    let mut root_pages: Vec<Page> = vec![];
+
+    for page in parser {
+        match page.redirect {
+            Some(_) => redirects.push(page),
+            None => root_pages.push(page),
+        }
+    }
+
+    let redirects: Vec<(String, String)> = redirects
+        .into_par_iter()
+        .map(|page| (page.name, page.redirect.unwrap()))
+        .collect();
+
+    root_pages.iter_mut().for_each(|page| {
+        page.tags = page
+            .tags
+            .par_iter()
+            .map(|tag| {
+                for (from, to) in redirects.iter() {
+                    if from == tag {
+                        println!("Matched, {from} : {to}");
+                        return to.clone();
+                    }
+                }
+                return tag.clone();
+            })
+            .collect();
+    })
+}

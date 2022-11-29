@@ -32,7 +32,7 @@ pub fn main() {
 
     let parser = Reader::from_reader(reader);
 
-    let parser = PageParser::new(parser, 500);
+    let parser = PageParser::new(parser);
 
     println!("starting parsing");
     let mut total_pages: usize = 0;

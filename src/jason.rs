@@ -1,7 +1,12 @@
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
+// use crate::page_id::{get_id_to_page, get_page_links, get_page_to_id_hashmap};
+use crate::page_id::*;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-
-use crate::page_id::{get_id_to_page, get_page_links, get_page_to_id_hashmap};
 
 pub struct Jason {
     outbound_links: Vec<Vec<usize>>,
@@ -14,7 +19,6 @@ impl Jason {
     // This will panic if the required files are not present
     pub fn new() -> Self {
         println!("Jason rises...");
-
         println!("Loading Id's ...");
         let page_names = get_id_to_page();
         println!("Loading Pages...");
@@ -41,29 +45,41 @@ impl Jason {
         &self.outbound_links[id]
     }
 
-    pub fn find_path(&self, from: usize, to: usize, ttl: usize) -> Option<Vec<usize>> {
+    pub fn find_path_root(&self, from: usize, to: usize, ttl: usize) -> Option<Vec<usize>> {
+        return self.find_path(from, to, ttl, Arc::new(AtomicBool::new(false)));
+    }
+
+    pub fn find_path(
+        &self,
+        from: usize,
+        to: usize,
+        ttl: usize,
+        die: Arc<AtomicBool>,
+    ) -> Option<Vec<usize>> {
         // let mut path: Vec<usize> = vec![];
         let connections = self.get_links(from);
 
         if connections.contains(&to) {
+            die.store(true, Ordering::Release);
             return Some(vec![from, to]);
-        } else {
-            for i in 0..ttl {
-                if let Some(res) = connections
-                    .par_iter()
-                    .map(|conn| {
-                        if let Some(path) = self.find_path(*conn, to, i) {
-                            let mut v = vec![from];
-                            v.append(&mut path.clone());
-                            return Some(v);
-                        }
-                        None
-                    })
-                    .find_any(|thing| matches!(thing, Some(_)))
-                    .unwrap_or(None)
-                {
-                    return Some(res);
+        }
+
+        let die = Arc::clone(&die);
+        for i in 1..ttl {
+            if die.load(Ordering::Relaxed) {
+                return None;
+            }
+
+            if let Some(res) = connections.par_iter().find_map_any(|conn| {
+                if let Some(path) = self.find_path(*conn, to, i, die.clone()) {
+                    let mut v = vec![from];
+                    v.append(&mut path.clone());
+                    return Some(v);
                 }
+                None
+            }) {
+                die.store(true, Ordering::Relaxed);
+                return Some(res);
             }
         }
         None

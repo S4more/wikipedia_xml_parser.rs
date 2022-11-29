@@ -4,22 +4,13 @@ use std::io::{BufReader, Write};
 use std::{env::args, time::Instant};
 
 use once_cell::sync::Lazy;
-use quick_xml::events::Event;
 use quick_xml::reader::Reader;
-use quick_xml::Error;
 use regex::Regex;
 
 use wiki_xml::page::Page;
 
 use load_file;
 use wiki_xml::page_parser::PageParser;
-
-static TAG_MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\[\[).+?(]|\|)").unwrap());
-
-static NAME_EXCLUDER: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\(disambiguation\)|File:|.+:.+").unwrap());
-
-// fn parse_content(content:)
 
 fn get_given_file_reader() -> Option<BufReader<File>> {
     let arg: Vec<String> = args().collect();
@@ -73,32 +64,32 @@ fn main() {
 
     return;
 
-    let start = Instant::now();
-    let reader = get_given_file_reader().expect("Failed to get file");
+    // let start = Instant::now();
+    // let reader = get_given_file_reader().expect("Failed to get file");
 
-    let parser = Reader::from_reader(reader);
-    let mut parser = PageParser::new(parser, 20);
+    // let parser = Reader::from_reader(reader);
+    // let mut parser = PageParser::new(parser);
 
-    let parsed = parser.parse();
+    // let parsed = parser.parse();
 
-    println!(
-        "calculated size: {} mb",
-        calculate_size(&parsed) / 1_048_576
-    );
-    println!("{}", parsed.len());
+    // println!(
+    //     "calculated size: {} mb",
+    //     calculate_size(&parsed) / 1_048_576
+    // );
+    // println!("{}", parsed.len());
 
-    println!("Started serializing...");
-    let mut file = File::create("parsed/parsed.json").unwrap();
-    let json_string = serde_json::to_string(&parsed).unwrap();
-    println!("Started writing...");
-    file.write(json_string.as_bytes()).unwrap();
+    // println!("Started serializing...");
+    // let mut file = File::create("parsed/parsed.json").unwrap();
+    // let json_string = serde_json::to_string(&parsed).unwrap();
+    // println!("Started writing...");
+    // file.write(json_string.as_bytes()).unwrap();
 
-    for page in parsed {
-        println!("Page: {:} {:}", page.tags.len(), page.name);
-    }
+    // for page in parsed {
+    //     println!("Page: {:} {:}", page.tags.len(), page.name);
+    // }
 
-    // consume_parser(parser);
+    // // consume_parser(parser);
 
-    let duration = start.elapsed();
-    println!("Took : {duration:?}");
+    // let duration = start.elapsed();
+    // println!("Took : {duration:?}");
 }
